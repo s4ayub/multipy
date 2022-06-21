@@ -1,7 +1,8 @@
-name: Multipy tests unittests (with ABI 1)
+name: Multipy runtime nightly release + tests with ABI 0
 
 on:
-  pull_request:
+  schedule:
+    - cron: '0 2 * * *' # run at 2 AM UTC
 
 jobs:
   unittest:
@@ -66,14 +67,14 @@ jobs:
             conda create --name example_env python=${{ matrix.python-version }}
             conda run -n example_env python -m pip install torch torchvision torchaudio pathlib
             conda run -n example_env python generate_examples.py
-      - name: Build pytorch
+      - name: Build pytorch with ABI=0
         shell: bash -l {0}
         env:
           PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
-              export GLIBCXX_USE_CXX11_ABI=1
-              export CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=1"
-              export TORCH_CXX_FLAGS="-D_GLIBCXX_USE_CXX11_ABI=1"
+              export GLIBCXX_USE_CXX11_ABI=0
+              export CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0"
+              export TORCH_CXX_FLAGS="-D_GLIBCXX_USE_CXX11_ABI=0"
               cd multipy/runtime/third-party/pytorch
               export USE_DEPLOY=1
               conda run -n multipy_runtime_env python setup.py develop
@@ -87,9 +88,9 @@ jobs:
               mkdir build
               cd build
               pwd
-              conda run -n multipy_runtime_env cmake -DABI_EQUALS_1=ON ..
+              conda run -n multipy_runtime_env cmake -DABI_EQUALS_1=OFF ..
               conda run -n multipy_runtime_env cmake --build . --config Release
-      - name: test_deploy
+      - name: install files
         shell: bash -l {0}
         env:
           PYTHON_VERSION: ${{ matrix.python-version }}
@@ -97,4 +98,19 @@ jobs:
               cd multipy/runtime
               cd build
               conda run -n multipy_runtime_env cmake --install . --prefix "."
-              ./test_deploy
+      - name: create tarball [click me to get a list of files for the nightly release]
+        shell: bash -l {0}
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+              cd multipy/runtime/build/dist
+              tar -czvf multipy_runtime.tar.gz runtime/
+
+      - name: Update nightly release
+        uses: pyTooling/Actions/releaser@main
+        with:
+          tag: nightly-runtime
+          rm: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            multipy/runtime/build/dist/multipy_runtime.tar.gz
